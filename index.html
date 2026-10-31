@@ -257,7 +257,7 @@ function newChunk(){
     sendChain=sendChain.then(()=>transcribe(blob)).then(t=>{if(t){lastTail=t; addSegment(t)}}).catch(e=>{chip(e.message,'err')})};
   r.start(); mr=r; chunkStart=Date.now(); silentSince=0; levelSum=0; levelN=0;
 }
-function cutChunk(){const r=mr; if(!r||r.state==='inactive') return; const avg=levelN?levelSum/levelN:0; r._quiet=avg<noise*1.4; try{r.stop()}catch(e){} if(running) newChunk()}
+function cutChunk(){const r=mr; if(!r||r.state==='inactive') return; const avg=levelN?levelSum/levelN:0; r._quiet=avg<Math.max(0.003,noise*1.4); try{r.stop()}catch(e){} if(running) newChunk()}
 async function transcribe(blob){
   const fd=new FormData();
   fd.append('file',blob,'chunk.'+(/mp4/.test(blob.type)?'m4a':'webm'));
@@ -268,17 +268,30 @@ async function transcribe(blob){
   if(!res.ok){const j=await res.json().catch(()=>({})); throw new Error(res.status===401?'Groq 키가 맞지 않습니다':res.status===429?'Groq 무료 한도 초과, 잠시 뒤 재시도':'Groq 오류: '+(j.error?.message||res.status))}
   const j=await res.json(); const t=(j.text||'').trim();
   if(running) chip('듣는 중','on');
+  if(!/[0-9A-Za-z가-힣]/.test(t)) return '';   // "." 같은 빈 결과는 버림
   return HALLU.test(t)?'':t;
+}
+// 마이크가 끊기거나 무음만 들어오면 녹음 장치를 다시 연결
+let deadSince=0, restarting=false;
+async function restartMic(){
+  if(restarting||!running) return; restarting=true; chip('마이크 다시 연결 중','busy');
+  clearInterval(recLoop); recLoop=null; const r=mr; mr=null; try{if(r&&r.state!=='inactive'){r._quiet=true; r.stop()}}catch(e){}
+  try{mstream?.getTracks().forEach(t=>t.stop())}catch(e){} try{actx?.close()}catch(e){}
+  try{await startGroq(); chip('듣는 중','on')}catch(e){chip('마이크 연결 실패 — 정지 후 다시 시작','err')}
+  deadSince=0; restarting=false;
 }
 async function startGroq(){
   mstream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true}});
   actx=new (window.AudioContext||window.webkitAudioContext)(); try{await actx.resume()}catch(e){}
   const src=actx.createMediaStreamSource(mstream); analyser=actx.createAnalyser(); analyser.fftSize=1024; src.connect(analyser);
-  const buf=new Float32Array(analyser.fftSize); noise=0.01;
+  const buf=new Float32Array(analyser.fftSize); noise=0.01; deadSince=0;
+  mstream.getAudioTracks().forEach(t=>{t.onended=()=>restartMic(); t.onmute=()=>{deadSince=deadSince||Date.now()}});
   newChunk();
   recLoop=setInterval(()=>{
     analyser.getFloatTimeDomainData(buf); let s=0; for(let i=0;i<buf.length;i++) s+=buf[i]*buf[i]; const rms=Math.sqrt(s/buf.length);
-    noise=rms<noise?noise*0.9+rms*0.1:noise*1.003;  // 배경 소음 수준을 천천히 추적
+    if(actx&&actx.state!=='running'){try{actx.resume()}catch(e){}}
+    if(rms<0.0002){deadSince=deadSince||Date.now(); if(Date.now()-deadSince>4000){restartMic(); return}} else deadSince=0;  // 완전 무음 4초 = 마이크 끊김
+    noise=Math.max(0.002,rms<noise?noise*0.9+rms*0.1:noise*1.003);  // 배경 소음 수준을 천천히 추적
     levelSum+=rms; levelN++;
     const now=Date.now(), sec=(now-chunkStart)/1000;
     if(rms<Math.max(0.004,noise*1.8)){if(!silentSince) silentSince=now} else silentSince=0;
@@ -319,7 +332,8 @@ async function start(){
 function stop(){running=false; if(recLoop||mstream) stopGroq(); try{rec?.stop()}catch(e){} if(engine()==='safari') tick(true); updateBtn(); chip('일시정지'); try{wake?.release()}catch(e){} wake=null}
 function updateBtn(){$('toggle').textContent=running?'정지':'시작'; $('toggle').classList.toggle('stop',running)}
 $('toggle').onclick=()=>running?stop():start();
-document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&running){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}});
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&running){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
+  if(engine()==='groq'){const tr=mstream?.getAudioTracks()[0]; if(!tr||tr.readyState==='ended'||tr.muted) restartMic()}}});
 
 // 정리본: 영어 강의는 영문+한글, 한국어 강의는 한글. 각각 세 줄 요약 + 상세 요약
 function sumPrompt(){
