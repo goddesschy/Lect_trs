@@ -8,10 +8,10 @@
 <title>강의 동시통역</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
 <style>
-/* Layout: 상단 고정 컨트롤 + 아래 스트림(최신이 위) */
+/* Layout: 상단 고정 컨트롤 + 아래 정리본 패널 + 스트림(최신이 위) */
 :root{
   --bg:#f3f5f4; --panel:#ffffff; --fg:#17211d; --muted:#5f6d67; --line:#d9dfdc;
-  --accent:#1f6f5c; --accent-ink:#ffffff; --live:#c2412d; --interim:#8f9b96;
+  --accent:#1f6f5c; --accent-soft:#e6f1ed; --accent-ink:#ffffff; --live:#c2412d; --interim:#8f9b96;
   --ko:"Noto Sans KR","Apple SD Gothic Neo",sans-serif;
   --en:"IBM Plex Sans",-apple-system,system-ui,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
@@ -19,7 +19,7 @@
 }
 @media (prefers-color-scheme: dark){:root{
   --bg:#0f1513; --panel:#161e1b; --fg:#e4ebe8; --muted:#8c9a94; --line:#28332f;
-  --accent:#53b79d; --accent-ink:#0c1311; --live:#ef7660; --interim:#5d6a65; color-scheme:dark}}
+  --accent:#53b79d; --accent-soft:#1a2a25; --accent-ink:#0c1311; --live:#ef7660; --interim:#5d6a65; color-scheme:dark}}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--ko);display:flex;flex-direction:column;-webkit-text-size-adjust:100%}
@@ -32,30 +32,51 @@ h1{font-size:18px;margin:0;font-weight:700;margin-right:auto}
 .chip{font:500 12px var(--mono);color:var(--muted);display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:999px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--line)}
 .chip.on .dot{background:var(--live);animation:pulse 1.2s infinite}
+.chip.busy .dot{background:var(--accent);animation:pulse 1.2s infinite}
 .chip.err{color:var(--live);border-color:var(--live)} .chip.err .dot{background:var(--live)}
 @keyframes pulse{50%{opacity:.3}}
-@media (prefers-reduced-motion:reduce){.chip.on .dot{animation:none}}
+@media (prefers-reduced-motion:reduce){.chip .dot{animation:none!important}}
 button,select,input{font:inherit;font-size:15px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-height:42px}
 button{cursor:pointer}
+button:disabled{opacity:.5}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 #toggle{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700;min-width:110px;font-size:17px}
 #toggle.stop{background:var(--live);border-color:var(--live)}
+#sumBtn{border-color:var(--accent);color:var(--accent);font-weight:700}
 label.f{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
 #topic{flex:1;min-width:180px}
-#apikey{flex:1;min-width:220px}
-.keyrow{background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:10px}
+.panel{background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.panel input[type=text],.panel input[type=password]{flex:1;min-width:200px}
 .hint{font-size:12px;color:var(--muted)}
 main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:16px;padding-bottom:max(48px,env(safe-area-inset-bottom));
   padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
-.stream{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.inner{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.summary{background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:16px 18px}
+.summary .head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.summary .head b{margin-right:auto;font-size:16px}
+.summary .head button{min-height:34px;padding:4px 10px;font-size:13px}
+.progress{background:var(--accent-soft);border-radius:10px;padding:14px 16px}
+.progress .head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:4px}
+.progress .head b{font-size:15px;color:var(--accent)}
+.progress .head .hint{margin-right:auto}
+.progress .head button{min-height:34px;padding:4px 10px;font-size:13px}
+.progress .sumbody{font-size:15px;line-height:1.65}
+.sumbody{line-height:1.7;font-size:16px}
+.sumbody h3{font-size:17px;margin:18px 0 6px;padding-top:12px;border-top:1px solid var(--line);color:var(--accent)}
+.sumbody h3:first-child{border-top:0;padding-top:0;margin-top:4px}
+.sumbody h4{font-size:15px;margin:12px 0 4px}
+.sumbody ul{margin:4px 0;padding-left:20px}
+.sumbody p{margin:4px 0}
+.stream{display:flex;flex-direction:column;gap:20px}
 .seg{display:grid;grid-template-columns:48px minmax(0,1fr);gap:3px 12px}
 .t{font:12px var(--mono);color:var(--muted);padding-top:3px;font-variant-numeric:tabular-nums}
 .en{font:14px/1.45 var(--en);color:var(--muted)}
 .ko{grid-column:2;font-size:var(--ko-size);line-height:1.55;font-weight:500}
+.seg.kr .ko{grid-column:2;grid-row:1}
 .ko.pending{color:var(--interim)}
 .ko.err{color:var(--live);font-size:15px}
-.seg.live .en{color:var(--interim);font-style:italic}
-.empty{color:var(--muted);text-align:center;margin-top:8vh;line-height:1.9}
+.seg.live .en,.seg.live .ko{color:var(--interim);font-style:italic}
+.empty{color:var(--muted);text-align:center;margin-top:6vh;line-height:1.9}
 .retry{font-size:13px;padding:4px 10px;min-height:0;margin-left:8px}
 </style>
 </head>
@@ -68,112 +89,154 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:16px;pa
       <button id="toggle" type="button">시작</button>
     </div>
     <div class="row">
+      <label class="f">강의 언어
+        <select id="mode"><option value="en">영어 → 한국어 번역</option><option value="ko">한국어 받아쓰기</option></select>
+      </label>
       <input id="topic" type="text" placeholder="강의 주제 (예: VNS, drug-resistant epilepsy)">
       <label class="f">글자
         <select id="size"><option>18</option><option selected>22</option><option>28</option><option>34</option></select>
       </label>
-      <button id="keyBtn" type="button">API 키</button>
-    </div>
-    <div class="row keyrow" id="keyrow" hidden>
-      <input id="apikey" type="password" placeholder="sk-ant-로 시작하는 키" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button id="keySave" type="button">저장</button>
-      <span class="hint">이 아이패드의 Safari 안에만 저장됩니다.</span>
+      <label class="f">중간 요약
+        <select id="progInt"><option value="0">끄기</option><option value="3">3분마다</option><option value="5" selected>5분마다</option><option value="10">10분마다</option></select>
+      </label>
     </div>
     <div class="row">
-      <span class="hint" id="hint">시작을 누르고 마이크를 허용하세요. 연자 스피커 가까이 두면 인식이 잘 됩니다.</span>
+      <button id="sumBtn" type="button">정리본 만들기</button>
+      <button id="setBtn" type="button">설정</button>
       <span style="margin-left:auto" class="row">
         <button id="copy" type="button">기록 복사</button>
         <button id="save" type="button">txt 저장</button>
         <button id="clear" type="button">새 강의</button>
       </span>
     </div>
+    <div class="panel" id="settings" hidden>
+      <div class="row">
+        <input id="apikey" type="password" placeholder="sk-ant-로 시작하는 API 키" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="keySave" type="button">키 저장</button>
+      </div>
+      <div class="row">
+        <button id="homeUrl" type="button">홈 화면용 주소 만들기</button>
+        <span class="hint" id="homeHint">누른 뒤 공유 → 홈 화면에 추가하면, 그 아이콘으로 열 때마다 키를 다시 넣지 않아도 됩니다. 이 주소는 다른 사람에게 보내지 마세요.</span>
+      </div>
+      <div class="row">
+        <input id="manual" type="text" placeholder="테스트: 영어(또는 한국어) 문장을 직접 입력" autocapitalize="off">
+        <button id="manualGo" type="button">입력</button>
+      </div>
+    </div>
+    <span class="hint" id="hint">시작을 누르고 마이크를 허용하세요. 강의가 끝나면 "정리본 만들기"를 누르세요.</span>
   </div>
 </div>
-<main id="main"><div class="stream" id="stream"></div></main>
+<main id="main"><div class="inner">
+  <section class="progress" id="progress" hidden>
+    <div class="head"><b>지금까지 요약</b><span class="hint" id="progTime"></span><button id="progNow" type="button">지금 요약</button><button id="progFold" type="button">접기</button></div>
+    <div class="sumbody" id="progBody"></div>
+  </section>
+  <section class="summary" id="summary" hidden>
+    <div class="head"><b id="sumTitle">강의 정리본</b><button id="sumCopy" type="button">복사</button><button id="sumClose" type="button">접기</button></div>
+    <div class="sumbody" id="sumBody"></div>
+  </section>
+  <div class="stream" id="stream"></div>
+</div></main>
 
 <script>
 const $=id=>document.getElementById(id);
 const S={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const MODEL='claude-haiku-5-5';
-let rec=null, running=false, sessionText='', sentTo=0, lastChange=Date.now(), lastText='', t0=null, liveEl=null, queue=[], busy=false, wake=null;
+const MODEL_FAST='claude-haiku-5-5', MODEL_SUM='claude-sonnet-5-5';
+let rec=null, running=false, sessionText='', sentTo=0, lastChange=Date.now(), lastText='', t0=null, liveEl=null, queue=[], busy=false, wake=null, sumText='';
 let log=[]; try{log=JSON.parse(S.get('li_log')||'[]')}catch(e){log=[]}
+log=log.map(x=>x.src!==undefined?x:{time:x.time,lang:'en',src:x.en||'',ko:x.ko||''});
 
-['topic','size'].forEach(id=>{const v=S.get('li_'+id); if(v) $(id).value=v; $(id).addEventListener('change',()=>{S.set('li_'+id,$(id).value); applySize()})});
+// API 키: 주소의 #key=… 로도 받아서 저장 (홈 화면 아이콘에 키를 담아 두는 용도)
+(function(){const m=location.hash.match(/key=([^&]+)/); if(m){try{S.set('li_key',decodeURIComponent(m[1]))}catch(e){}}})();
+function key(){return S.get('li_key')||''}
+
+['topic','size','mode'].forEach(id=>{const v=S.get('li_'+id); if(v) $(id).value=v; $(id).addEventListener('change',()=>{S.set('li_'+id,$(id).value); applySize(); if(id==='mode'&&running){stop(); start()}})});
 function applySize(){document.documentElement.style.setProperty('--ko-size',$('size').value+'px')}
 applySize();
-function key(){return S.get('li_key')||''}
-function showKeyRow(show){$('keyrow').hidden=!show; if(show) $('apikey').value=key()}
-showKeyRow(!key());
-$('keyBtn').onclick=()=>showKeyRow($('keyrow').hidden);
-$('keySave').onclick=()=>{S.set('li_key',$('apikey').value.trim()); showKeyRow(false); chip(key()?'키 저장됨':'키 없음',key()?'':'err')};
+function mode(){return $('mode').value}
+
+$('setBtn').onclick=()=>{$('settings').hidden=!$('settings').hidden; $('apikey').value=key()};
+if(!key()){$('settings').hidden=false}
+$('keySave').onclick=()=>{S.set('li_key',$('apikey').value.trim()); chip(key()?'키 저장됨':'키 없음',key()?'':'err')};
+$('homeUrl').onclick=()=>{const k=$('apikey').value.trim()||key(); if(!k){chip('키를 먼저 넣으세요','err'); return}
+  S.set('li_key',k); location.hash='key='+encodeURIComponent(k);
+  $('homeHint').textContent='준비됐습니다. 지금 Safari 공유 버튼 → "홈 화면에 추가"를 누르세요. 기존 아이콘이 있으면 지우고 새로 추가하세요.'};
+$('manualGo').onclick=()=>{const v=$('manual').value.trim(); if(v){addSegment(v); $('manual').value=''}};
+$('manual').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); $('manualGo').click()}});
 
 function chip(t,c){$('chipText').textContent=t;$('chip').className='chip '+(c||'')}
 function stamp(){if(!t0) t0=Date.now(); const s=Math.floor((Date.now()-t0)/1000); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
-function persist(){S.set('li_log',JSON.stringify(log.slice(-800)))}
+function persist(){S.set('li_log',JSON.stringify(log.slice(-1500)))}
 
-function segEl(e,cls){const d=document.createElement('div'); d.className='seg '+(cls||'');
-  d.innerHTML='<span class="t"></span><div class="en"></div><div class="ko"></div>';
-  d.querySelector('.t').textContent=e.time||''; d.querySelector('.en').textContent=e.en||''; d.querySelector('.ko').textContent=e.ko||''; return d}
+function segEl(e,cls){const d=document.createElement('div'); d.className='seg '+(e.lang==='ko'?'kr ':'')+(cls||'');
+  if(e.lang==='ko'){d.innerHTML='<span class="t"></span><div class="ko"></div>'; d.querySelector('.ko').textContent=e.src||''}
+  else{d.innerHTML='<span class="t"></span><div class="en"></div><div class="ko"></div>'; d.querySelector('.en').textContent=e.src||''; d.querySelector('.ko').textContent=e.ko||''}
+  d.querySelector('.t').textContent=e.time||''; return d}
 function render(){const s=$('stream'); s.innerHTML=''; liveEl=null;
-  if(!log.length){s.innerHTML='<p class="empty"><b>시작</b>을 누르면 영어를 듣고, 문장마다 한국어 번역을 위에 붙입니다.<br>최신 번역이 항상 맨 위에 나옵니다.</p>'; return}
+  if(!log.length){s.innerHTML='<p class="empty"><b>시작</b>을 누르면 받아쓰기가 시작됩니다.<br>영어 모드는 문장마다 한국어 번역이 붙고, 최신 내용이 항상 맨 위에 나옵니다.</p>'; return}
   for(let i=log.length-1;i>=0;i--) s.appendChild(segEl(log[i]))}
 render(); if(log.length) t0=Date.now();
 function addTop(el){const s=$('stream'); s.querySelector('.empty')?.remove(); const ref=liveEl&&liveEl.parentNode?liveEl.nextSibling:s.firstChild; s.insertBefore(el,ref); $('main').scrollTop=0}
 function showLive(text){
   if(!text.trim()){if(liveEl){liveEl.remove(); liveEl=null} return}
   const s=$('stream'); s.querySelector('.empty')?.remove();
-  if(!liveEl){liveEl=segEl({time:'•••'},'live'); s.insertBefore(liveEl,s.firstChild)}
-  liveEl.querySelector('.en').textContent=text.trim()}
+  if(!liveEl||liveEl.dataset.lang!==mode()){liveEl?.remove(); liveEl=segEl({time:'•••',lang:mode()},'live'); liveEl.dataset.lang=mode(); s.insertBefore(liveEl,s.firstChild)}
+  liveEl.querySelector(mode()==='ko'?'.ko':'.en').textContent=text.trim()}
 
-const SYSTEM=()=>`You are a simultaneous interpreter at an international neurology conference. Translate the English speech segment into natural Korean, the way a Korean neurologist would say it.
+async function api(model,system,user,maxTokens){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model,max_tokens:maxTokens,system,messages:[{role:'user',content:user}]})});
+  if(!res.ok){const j=await res.json().catch(()=>({})); const msg=j.error?.message||'';
+    const err=new Error(res.status===401?'API 키가 맞지 않습니다. 설정에서 다시 입력하세요.':res.status===429?'요청이 많아 잠시 막혔습니다. 잠시 뒤 다시 시도하세요.':/credit/i.test(msg)?'API 크레딧이 부족합니다. 콘솔에서 충전하세요.':'오류: '+(msg||res.status));
+    err.status=res.status; err.raw=msg; throw err}
+  const j=await res.json(); return j.content.map(c=>c.text||'').join('').trim();
+}
+
+const TRANS_SYS=()=>`You are a simultaneous interpreter at an international neurology conference. Translate the English speech segment into natural Korean, the way a Korean neurologist would say it.
 - Keep standard medical terms, drug names, trial names and abbreviations in English, or add the English in parentheses where Korean physicians normally do.
 - The text comes from speech recognition and may have misheard words and no punctuation. Silently fix obvious errors from context.
 - Output ONLY the Korean translation.`+($('topic').value.trim()?`\nLecture topic: ${$('topic').value.trim()}`:'');
 
-async function callClaude(text){
-  const prev=log.slice(-2).map(x=>x.en).join(' ');
-  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
-    headers:{'content-type':'application/json','x-api-key':key(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:MODEL,max_tokens:700,system:SYSTEM(),
-      messages:[{role:'user',content:(prev?`Previous sentences, context only (do not translate): ${prev}\n\n`:'')+`Translate:\n${text}`}]})});
-  if(!res.ok){const j=await res.json().catch(()=>({}));
-    const m=res.status===401?'API 키가 맞지 않습니다. 상단 "API 키"에서 다시 입력하세요.':res.status===429?'요청이 많아 잠시 막혔습니다.':res.status===400&&/credit/i.test(j.error?.message||'')?'API 크레딧이 부족합니다. 콘솔에서 충전하세요.':'번역 오류: '+(j.error?.message||res.status);
-    throw new Error(m)}
-  const j=await res.json(); return j.content.map(c=>c.text||'').join('').trim();
-}
-
 async function pump(){
   if(busy||!queue.length) return;
   busy=true;
-  const text=queue.splice(0).join(' ');  // 밀린 문장은 합쳐서 한 번에
-  const entry={time:stamp(),en:text,ko:''};
+  const text=queue.splice(0).join(' ');
+  const entry={time:stamp(),lang:'en',src:text,ko:''};
   const el=segEl(entry); const ko=el.querySelector('.ko'); ko.textContent='번역 중…'; ko.className='ko pending'; addTop(el);
-  try{entry.ko=await callClaude(text); ko.textContent=entry.ko; ko.className='ko'}
+  try{const prev=log.filter(x=>x.lang==='en').slice(-2).map(x=>x.src).join(' ');
+    entry.ko=await api(MODEL_FAST,TRANS_SYS(),(prev?`Previous sentences, context only (do not translate): ${prev}\n\n`:'')+`Translate:\n${text}`,700);
+    ko.textContent=entry.ko; ko.className='ko'}
   catch(e){entry.ko='(번역 실패)'; ko.className='ko err'; ko.textContent=e.message;
-    const b=document.createElement('button'); b.className='retry'; b.textContent='다시 번역'; b.onclick=()=>{el.remove(); queue.unshift(text); pump()}; ko.appendChild(b)}
+    const b=document.createElement('button'); b.className='retry'; b.textContent='다시 번역'; b.onclick=()=>{el.remove(); log=log.filter(x=>x!==entry); persist(); queue.unshift(text); pump()}; ko.appendChild(b)}
   log.push(entry); persist(); busy=false; pump();
 }
-function send(chunk){chunk=chunk.trim(); if(chunk){queue.push(chunk); pump()}}
+function addSegment(text){
+  text=text.trim(); if(!text) return;
+  if(!key()){$('settings').hidden=false; chip('API 키 필요','err')}
+  if(mode()==='ko'){const e={time:stamp(),lang:'ko',src:text}; log.push(e); persist(); addTop(segEl(e))}
+  else{queue.push(text); pump()}
+}
 
-// 인식 결과를 오프셋 기준으로 잘라 보냄 (iOS는 isFinal을 늦게 주거나 안 주는 경우가 있어 문장부호·멈춤·길이로 판단)
+// 인식 결과를 오프셋 기준으로 잘라 보냄 (문장부호·2초 멈춤·길이로 판단)
 function words(s){return s.trim().split(/\s+/).filter(Boolean).length}
 function tick(force){
   const v=sessionText;
   if(v!==lastText){lastText=v; lastChange=Date.now()}
   if(v.length<sentTo) sentTo=v.length;
   const pending=v.slice(sentTo);
-  let cut=-1, m; const re=/[.?!](?=\s+\S)/g; while((m=re.exec(pending))) cut=m.index+1;
+  let cut=-1, m; const re=/[.?!。](?=\s+\S)/g; while((m=re.exec(pending))) cut=m.index+1;
   if(cut>0&&words(pending.slice(0,cut))<3) cut=-1;
   if(cut<0&&words(pending)>40){const tail=pending.trimEnd().split(/\s+/).slice(-5).join(' '); cut=pending.lastIndexOf(tail)}
   if(cut<0&&pending.trim()&&(force||Date.now()-lastChange>2000)) cut=pending.length;
-  if(cut>0){send(pending.slice(0,cut)); sentTo+=cut}
+  if(cut>0){addSegment(pending.slice(0,cut)); sentTo+=cut}
   showLive(v.slice(sentTo));
 }
 setInterval(()=>{if(running) tick(false)},400);
 
 function newRec(){
-  const r=new SR(); r.lang='en-US'; r.continuous=true; r.interimResults=true;
+  const r=new SR(); r.lang=mode()==='ko'?'ko-KR':'en-US'; r.continuous=true; r.interimResults=true;
   r.onresult=e=>{let t=''; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript+' '; sessionText=t.replace(/\s+/g,' ').trimStart()};
   r.onerror=e=>{
     if(e.error==='not-allowed'||e.error==='service-not-allowed'){running=false; updateBtn(); chip('마이크 거부됨','err'); $('hint').textContent='설정 → Safari → 마이크에서 허용한 뒤 다시 시작하세요.'}
@@ -185,10 +248,11 @@ function newRec(){
 }
 async function start(){
   if(!SR){chip('음성 인식 미지원','err'); $('hint').textContent='Safari 최신 버전에서 열어 주세요.'; return}
-  if(!key()){showKeyRow(true); chip('API 키 필요','err'); return}
+  if(mode()==='en'&&!key()){$('settings').hidden=false; chip('API 키 필요','err'); return}
   running=true; sessionText=''; sentTo=0; if(!t0) t0=Date.now();
   rec=newRec(); try{rec.start()}catch(e){}
-  updateBtn(); chip('듣는 중','on'); $('hint').textContent='연자가 말하면 회색으로 먼저 보이고, 문장이 끝나면 번역됩니다.';
+  updateBtn(); chip('듣는 중','on');
+  $('hint').textContent=mode()==='ko'?'한국어를 받아 적는 중입니다. 끝나면 "정리본 만들기"를 누르세요.':'회색 영어가 먼저 보이고, 문장이 끝나면 번역됩니다.';
   try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
 }
 function stop(){running=false; try{rec?.stop()}catch(e){} tick(true); updateBtn(); chip('일시정지'); try{wake?.release()}catch(e){} wake=null}
@@ -196,13 +260,104 @@ function updateBtn(){$('toggle').textContent=running?'정지':'시작'; $('toggl
 $('toggle').onclick=()=>running?stop():start();
 document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&running){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}});
 
-function transcript(){return log.map(x=>`[${x.time}] ${x.en}\n${x.ko}`).join('\n\n')}
+// 정리본: 영어 강의는 영문+한글, 한국어 강의는 한글. 각각 세 줄 요약 + 상세 요약
+function sumPrompt(){
+  const topic=$('topic').value.trim();
+  const enLines=log.filter(x=>x.lang==='en').map(x=>`[${x.time}] ${x.src}`);
+  const koLines=log.filter(x=>x.lang==='ko').map(x=>`[${x.time}] ${x.src}`);
+  const isEn=enLines.length>=koLines.length;
+  const system=`You summarize medical conference lectures (neurology) for a Korean neurologist. The transcript comes from automatic speech recognition: it can contain misheard words, missing punctuation and broken sentences. Reconstruct the intended meaning from context, keep drug names, trial names, numbers and statistics exactly, and do not invent content that is not supported by the transcript. If something important is unclear, say so briefly.`;
+  const detailRules=`Detailed summary rules: follow the lecture's flow; use "### " subheadings per topic; under each, "- " bullet points with key facts, data (numbers, effect sizes, study names), recommendations and practical take-home points. End the detailed summary with a "### Take-home messages" (or "### 핵심 메시지") subsection of 3-5 bullets.`;
+  const fmtEn=`Output exactly these four sections, in this order, using these headings:
+## 3-line summary (English)
+(exactly 3 lines, each starting with "- ")
+## 3줄 요약 (한국어)
+(정확히 3줄, 각 줄 "- "로 시작)
+## Detailed summary (English)
+## 상세 요약 (한국어)
+In Korean sections keep standard medical terms in English or add English in parentheses where Korean physicians normally do.
+${detailRules}`;
+  const fmtKo=`다음 두 섹션을 이 순서와 제목 그대로 한국어로 작성하세요.
+## 3줄 요약
+(정확히 3줄, 각 줄 "- "로 시작)
+## 상세 요약
+의학 용어는 한국 의사들이 흔히 쓰는 대로 영어를 유지하거나 괄호로 병기하세요.
+${detailRules}`;
+  const user=(topic?`Lecture topic: ${topic}\n\n`:'')+(isEn?fmtEn:fmtKo)+`\n\nTranscript:\n`+(isEn?enLines:koLines).join('\n');
+  return {system,user,isEn};
+}
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function md(t){
+  const out=[]; let inList=false;
+  for(let line of t.split('\n')){
+    let l=esc(line.trim()).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    if(/^[-*•] /.test(l)){if(!inList){out.push('<ul>'); inList=true} out.push('<li>'+l.slice(2)+'</li>'); continue}
+    if(inList){out.push('</ul>'); inList=false}
+    if(!l) continue;
+    if(l.startsWith('### ')) out.push('<h4>'+l.slice(4)+'</h4>');
+    else if(l.startsWith('## ')) out.push('<h3>'+l.slice(3)+'</h3>');
+    else if(l.startsWith('# ')) out.push('<h3>'+l.slice(2)+'</h3>');
+    else out.push('<p>'+l+'</p>');
+  }
+  if(inList) out.push('</ul>'); return out.join('');
+}
+$('sumBtn').onclick=async()=>{
+  if(!log.length){chip('정리할 기록이 없습니다','err'); return}
+  if(!key()){$('settings').hidden=false; chip('API 키 필요','err'); return}
+  if(running) stop();
+  const {system,user,isEn}=sumPrompt();
+  $('summary').hidden=false; $('sumTitle').textContent=isEn?'강의 정리본 (영문 · 한글)':'강의 정리본'; $('main').scrollTop=0;
+  const started=Date.now(); const timer=setInterval(()=>{$('sumBody').innerHTML='<p class="hint">정리하는 중… '+Math.floor((Date.now()-started)/1000)+'초 (1시간 강의는 1분 안팎 걸립니다)</p>'},500);
+  $('sumBtn').disabled=true; chip('정리 중','busy');
+  try{
+    try{sumText=await api(MODEL_SUM,system,user,8000)}
+    catch(e){if(e.status===404||(e.status===400&&/model/i.test(e.raw||''))) sumText=await api(MODEL_FAST,system,user,8000); else throw e}
+    clearInterval(timer); $('sumBody').innerHTML=md(sumText); S.set('li_sum',sumText); chip('정리 완료');
+  }catch(e){clearInterval(timer); $('sumBody').innerHTML='<p class="ko err">'+esc(e.message)+'</p>'; chip('정리 실패','err')}
+  finally{$('sumBtn').disabled=false}
+};
+$('sumClose').onclick=()=>{$('summary').hidden=true};
+$('sumCopy').onclick=async()=>{try{await navigator.clipboard.writeText(sumText); $('sumCopy').textContent='복사됨'}catch(e){$('sumCopy').textContent='복사 안 됨'} setTimeout(()=>$('sumCopy').textContent='복사',1500)};
+sumText=S.get('li_sum')||''; if(sumText&&log.length){$('summary').hidden=false; $('sumBody').innerHTML=md(sumText)}
+
+// 중간 요약: 이전 요약 + 그 뒤 새로 들어온 문장만 보내서 갱신 (매번 전체를 보내지 않아 빠르고 저렴)
+let prog={text:'',upto:0,at:''}; try{prog=JSON.parse(S.get('li_prog')||'null')||prog}catch(e){}
+let progBusy=false, lastProg=Date.now();
+{const v=S.get('li_progInt'); if(v!==null) $('progInt').value=v; $('progInt').onchange=()=>S.set('li_progInt',$('progInt').value)}
+function showProg(){ if(!prog.text) return; $('progress').hidden=false; $('progBody').innerHTML=md(prog.text); $('progTime').textContent=prog.at?prog.at+' 기준':'' }
+if(log.length) showProg();
+async function runProgress(manual){
+  if(progBusy) return;
+  const fresh=log.slice(prog.upto).filter(x=>x.src);
+  if(!fresh.length){ if(manual) chip('새로 정리할 내용이 없습니다'); return }
+  if(!key()){ if(manual){$('settings').hidden=false; chip('API 키 필요','err')} return }
+  progBusy=true; lastProg=Date.now(); const upto=log.length;
+  $('progress').hidden=false; $('progNow').disabled=true; $('progNow').textContent='요약 중…';
+  const topic=$('topic').value.trim();
+  const system=`You keep a running summary of a live neurology conference lecture for a Korean neurologist who may have missed parts. The transcript comes from speech recognition and may contain misheard words; infer the intended meaning, keep drug names, trial names and numbers exact, and never invent content. Write in Korean; keep standard medical terms in English or add English in parentheses where Korean physicians normally do.`;
+  const user=(topic?`Lecture topic: ${topic}\n\n`:'')+
+    (prog.text?`Running summary so far:\n${prog.text}\n\n`:'')+
+    `New transcript since the last summary:\n`+fresh.map(x=>`[${x.time}] ${x.src}`).join('\n')+
+    `\n\nUpdate the running summary so it covers the WHOLE lecture so far. Output exactly:\n## 지금까지 흐름\n(5-8 bullets, "- ", in the order topics were covered; merge, don't just append)\n## 방금 다룬 내용\n(1-2 bullets about the newest part)`;
+  try{
+    prog={text:await api(MODEL_FAST,system,user,1200),upto,at:log[upto-1]?.time||''};
+    S.set('li_prog',JSON.stringify(prog)); showProg();
+  }catch(e){ if(manual){$('progress').hidden=false; $('progBody').innerHTML='<p class="ko err">'+esc(e.message)+'</p>'} }
+  finally{ progBusy=false; $('progNow').disabled=false; $('progNow').textContent='지금 요약' }
+}
+$('progNow').onclick=()=>runProgress(true);
+$('progFold').onclick=()=>{const b=$('progBody'); b.hidden=!b.hidden; $('progFold').textContent=b.hidden?'펼치기':'접기'};
+setInterval(()=>{const m=+$('progInt').value; if(running&&m>0&&Date.now()-lastProg>=m*60000&&log.length-prog.upto>=3) runProgress(false)},15000);
+
+function transcript(){
+  const body=log.map(x=>x.lang==='ko'?`[${x.time}] ${x.src}`:`[${x.time}] ${x.src}\n${x.ko}`).join('\n\n');
+  return (sumText?`==== 정리본 ====\n${sumText}\n\n==== 전체 기록 ====\n`:'')+body}
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText(transcript()); $('copy').textContent='복사됨'}catch(e){$('copy').textContent='복사 안 됨'} setTimeout(()=>$('copy').textContent='기록 복사',1500)};
 $('save').onclick=()=>{if(!log.length) return; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([transcript()],{type:'text/plain'}));
   a.download='lecture_'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.txt'; document.body.appendChild(a); a.click(); a.remove()};
 let confirmClear=false;
 $('clear').onclick=()=>{ if(!confirmClear){confirmClear=true; $('clear').textContent='정말 지울까요?'; setTimeout(()=>{confirmClear=false; $('clear').textContent='새 강의'},3000); return}
-  confirmClear=false; $('clear').textContent='새 강의'; log=[]; persist(); t0=running?Date.now():null; render()};
+  confirmClear=false; $('clear').textContent='새 강의'; log=[]; persist(); sumText=''; S.set('li_sum',''); $('summary').hidden=true; prog={text:'',upto:0,at:''}; S.set('li_prog',''); $('progress').hidden=true; lastProg=Date.now(); t0=running?Date.now():null; render()};
 </script>
 </body>
 </html>
