@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="강의통역">
+<title>강의 동시통역</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 상단 고정 컨트롤 + 아래 스트림(최신이 위) */
+:root{
+  --bg:#f3f5f4; --panel:#ffffff; --fg:#17211d; --muted:#5f6d67; --line:#d9dfdc;
+  --accent:#1f6f5c; --accent-ink:#ffffff; --live:#c2412d; --interim:#8f9b96;
+  --ko:"Noto Sans KR","Apple SD Gothic Neo",sans-serif;
+  --en:"IBM Plex Sans",-apple-system,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --ko-size:22px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1513; --panel:#161e1b; --fg:#e4ebe8; --muted:#8c9a94; --line:#28332f;
+  --accent:#53b79d; --accent-ink:#0c1311; --live:#ef7660; --interim:#5d6a65; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--ko);display:flex;flex-direction:column;-webkit-text-size-adjust:100%}
+.top{background:var(--panel);border-bottom:1px solid var(--line);
+  padding-top:max(12px,env(safe-area-inset-top));padding-bottom:12px;
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+h1{font-size:18px;margin:0;font-weight:700;margin-right:auto}
+.chip{font:500 12px var(--mono);color:var(--muted);display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:999px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.chip.on .dot{background:var(--live);animation:pulse 1.2s infinite}
+.chip.err{color:var(--live);border-color:var(--live)} .chip.err .dot{background:var(--live)}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.chip.on .dot{animation:none}}
+button,select,input{font:inherit;font-size:15px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-height:42px}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#toggle{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700;min-width:110px;font-size:17px}
+#toggle.stop{background:var(--live);border-color:var(--live)}
+label.f{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+#topic{flex:1;min-width:180px}
+#apikey{flex:1;min-width:220px}
+.keyrow{background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:10px}
+.hint{font-size:12px;color:var(--muted)}
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:16px;padding-bottom:max(48px,env(safe-area-inset-bottom));
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+.stream{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.seg{display:grid;grid-template-columns:48px minmax(0,1fr);gap:3px 12px}
+.t{font:12px var(--mono);color:var(--muted);padding-top:3px;font-variant-numeric:tabular-nums}
+.en{font:14px/1.45 var(--en);color:var(--muted)}
+.ko{grid-column:2;font-size:var(--ko-size);line-height:1.55;font-weight:500}
+.ko.pending{color:var(--interim)}
+.ko.err{color:var(--live);font-size:15px}
+.seg.live .en{color:var(--interim);font-style:italic}
+.empty{color:var(--muted);text-align:center;margin-top:8vh;line-height:1.9}
+.retry{font-size:13px;padding:4px 10px;min-height:0;margin-left:8px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="wrap">
+    <div class="row">
+      <h1>강의 동시통역</h1>
+      <span class="chip" id="chip"><span class="dot"></span><span id="chipText">대기 중</span></span>
+      <button id="toggle" type="button">시작</button>
+    </div>
+    <div class="row">
+      <input id="topic" type="text" placeholder="강의 주제 (예: VNS, drug-resistant epilepsy)">
+      <label class="f">글자
+        <select id="size"><option>18</option><option selected>22</option><option>28</option><option>34</option></select>
+      </label>
+      <button id="keyBtn" type="button">API 키</button>
+    </div>
+    <div class="row keyrow" id="keyrow" hidden>
+      <input id="apikey" type="password" placeholder="sk-ant-로 시작하는 키" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="keySave" type="button">저장</button>
+      <span class="hint">이 아이패드의 Safari 안에만 저장됩니다.</span>
+    </div>
+    <div class="row">
+      <span class="hint" id="hint">시작을 누르고 마이크를 허용하세요. 연자 스피커 가까이 두면 인식이 잘 됩니다.</span>
+      <span style="margin-left:auto" class="row">
+        <button id="copy" type="button">기록 복사</button>
+        <button id="save" type="button">txt 저장</button>
+        <button id="clear" type="button">새 강의</button>
+      </span>
+    </div>
+  </div>
+</div>
+<main id="main"><div class="stream" id="stream"></div></main>
+
+<script>
+const $=id=>document.getElementById(id);
+const S={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const MODEL='claude-haiku-5-5';
+let rec=null, running=false, sessionText='', sentTo=0, lastChange=Date.now(), lastText='', t0=null, liveEl=null, queue=[], busy=false, wake=null;
+let log=[]; try{log=JSON.parse(S.get('li_log')||'[]')}catch(e){log=[]}
+
+['topic','size'].forEach(id=>{const v=S.get('li_'+id); if(v) $(id).value=v; $(id).addEventListener('change',()=>{S.set('li_'+id,$(id).value); applySize()})});
+function applySize(){document.documentElement.style.setProperty('--ko-size',$('size').value+'px')}
+applySize();
+function key(){return S.get('li_key')||''}
+function showKeyRow(show){$('keyrow').hidden=!show; if(show) $('apikey').value=key()}
+showKeyRow(!key());
+$('keyBtn').onclick=()=>showKeyRow($('keyrow').hidden);
+$('keySave').onclick=()=>{S.set('li_key',$('apikey').value.trim()); showKeyRow(false); chip(key()?'키 저장됨':'키 없음',key()?'':'err')};
+
+function chip(t,c){$('chipText').textContent=t;$('chip').className='chip '+(c||'')}
+function stamp(){if(!t0) t0=Date.now(); const s=Math.floor((Date.now()-t0)/1000); return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function persist(){S.set('li_log',JSON.stringify(log.slice(-800)))}
+
+function segEl(e,cls){const d=document.createElement('div'); d.className='seg '+(cls||'');
+  d.innerHTML='<span class="t"></span><div class="en"></div><div class="ko"></div>';
+  d.querySelector('.t').textContent=e.time||''; d.querySelector('.en').textContent=e.en||''; d.querySelector('.ko').textContent=e.ko||''; return d}
+function render(){const s=$('stream'); s.innerHTML=''; liveEl=null;
+  if(!log.length){s.innerHTML='<p class="empty"><b>시작</b>을 누르면 영어를 듣고, 문장마다 한국어 번역을 위에 붙입니다.<br>최신 번역이 항상 맨 위에 나옵니다.</p>'; return}
+  for(let i=log.length-1;i>=0;i--) s.appendChild(segEl(log[i]))}
+render(); if(log.length) t0=Date.now();
+function addTop(el){const s=$('stream'); s.querySelector('.empty')?.remove(); const ref=liveEl&&liveEl.parentNode?liveEl.nextSibling:s.firstChild; s.insertBefore(el,ref); $('main').scrollTop=0}
+function showLive(text){
+  if(!text.trim()){if(liveEl){liveEl.remove(); liveEl=null} return}
+  const s=$('stream'); s.querySelector('.empty')?.remove();
+  if(!liveEl){liveEl=segEl({time:'•••'},'live'); s.insertBefore(liveEl,s.firstChild)}
+  liveEl.querySelector('.en').textContent=text.trim()}
+
+const SYSTEM=()=>`You are a simultaneous interpreter at an international neurology conference. Translate the English speech segment into natural Korean, the way a Korean neurologist would say it.
+- Keep standard medical terms, drug names, trial names and abbreviations in English, or add the English in parentheses where Korean physicians normally do.
+- The text comes from speech recognition and may have misheard words and no punctuation. Silently fix obvious errors from context.
+- Output ONLY the Korean translation.`+($('topic').value.trim()?`\nLecture topic: ${$('topic').value.trim()}`:'');
+
+async function callClaude(text){
+  const prev=log.slice(-2).map(x=>x.en).join(' ');
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+    headers:{'content-type':'application/json','x-api-key':key(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:MODEL,max_tokens:700,system:SYSTEM(),
+      messages:[{role:'user',content:(prev?`Previous sentences, context only (do not translate): ${prev}\n\n`:'')+`Translate:\n${text}`}]})});
+  if(!res.ok){const j=await res.json().catch(()=>({}));
+    const m=res.status===401?'API 키가 맞지 않습니다. 상단 "API 키"에서 다시 입력하세요.':res.status===429?'요청이 많아 잠시 막혔습니다.':res.status===400&&/credit/i.test(j.error?.message||'')?'API 크레딧이 부족합니다. 콘솔에서 충전하세요.':'번역 오류: '+(j.error?.message||res.status);
+    throw new Error(m)}
+  const j=await res.json(); return j.content.map(c=>c.text||'').join('').trim();
+}
+
+async function pump(){
+  if(busy||!queue.length) return;
+  busy=true;
+  const text=queue.splice(0).join(' ');  // 밀린 문장은 합쳐서 한 번에
+  const entry={time:stamp(),en:text,ko:''};
+  const el=segEl(entry); const ko=el.querySelector('.ko'); ko.textContent='번역 중…'; ko.className='ko pending'; addTop(el);
+  try{entry.ko=await callClaude(text); ko.textContent=entry.ko; ko.className='ko'}
+  catch(e){entry.ko='(번역 실패)'; ko.className='ko err'; ko.textContent=e.message;
+    const b=document.createElement('button'); b.className='retry'; b.textContent='다시 번역'; b.onclick=()=>{el.remove(); queue.unshift(text); pump()}; ko.appendChild(b)}
+  log.push(entry); persist(); busy=false; pump();
+}
+function send(chunk){chunk=chunk.trim(); if(chunk){queue.push(chunk); pump()}}
+
+// 인식 결과를 오프셋 기준으로 잘라 보냄 (iOS는 isFinal을 늦게 주거나 안 주는 경우가 있어 문장부호·멈춤·길이로 판단)
+function words(s){return s.trim().split(/\s+/).filter(Boolean).length}
+function tick(force){
+  const v=sessionText;
+  if(v!==lastText){lastText=v; lastChange=Date.now()}
+  if(v.length<sentTo) sentTo=v.length;
+  const pending=v.slice(sentTo);
+  let cut=-1, m; const re=/[.?!](?=\s+\S)/g; while((m=re.exec(pending))) cut=m.index+1;
+  if(cut>0&&words(pending.slice(0,cut))<3) cut=-1;
+  if(cut<0&&words(pending)>40){const tail=pending.trimEnd().split(/\s+/).slice(-5).join(' '); cut=pending.lastIndexOf(tail)}
+  if(cut<0&&pending.trim()&&(force||Date.now()-lastChange>2000)) cut=pending.length;
+  if(cut>0){send(pending.slice(0,cut)); sentTo+=cut}
+  showLive(v.slice(sentTo));
+}
+setInterval(()=>{if(running) tick(false)},400);
+
+function newRec(){
+  const r=new SR(); r.lang='en-US'; r.continuous=true; r.interimResults=true;
+  r.onresult=e=>{let t=''; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript+' '; sessionText=t.replace(/\s+/g,' ').trimStart()};
+  r.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){running=false; updateBtn(); chip('마이크 거부됨','err'); $('hint').textContent='설정 → Safari → 마이크에서 허용한 뒤 다시 시작하세요.'}
+    else if(e.error==='network'){chip('네트워크 오류','err')}
+  };
+  r.onend=()=>{ tick(true); sessionText=''; sentTo=0; lastText='';
+    if(running){ setTimeout(()=>{ if(!running) return; try{rec=newRec(); rec.start()}catch(err){chip('다시 시작을 눌러 주세요','err')} },250)} };
+  return r;
+}
+async function start(){
+  if(!SR){chip('음성 인식 미지원','err'); $('hint').textContent='Safari 최신 버전에서 열어 주세요.'; return}
+  if(!key()){showKeyRow(true); chip('API 키 필요','err'); return}
+  running=true; sessionText=''; sentTo=0; if(!t0) t0=Date.now();
+  rec=newRec(); try{rec.start()}catch(e){}
+  updateBtn(); chip('듣는 중','on'); $('hint').textContent='연자가 말하면 회색으로 먼저 보이고, 문장이 끝나면 번역됩니다.';
+  try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
+}
+function stop(){running=false; try{rec?.stop()}catch(e){} tick(true); updateBtn(); chip('일시정지'); try{wake?.release()}catch(e){} wake=null}
+function updateBtn(){$('toggle').textContent=running?'정지':'시작'; $('toggle').classList.toggle('stop',running)}
+$('toggle').onclick=()=>running?stop():start();
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&running){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}});
+
+function transcript(){return log.map(x=>`[${x.time}] ${x.en}\n${x.ko}`).join('\n\n')}
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(transcript()); $('copy').textContent='복사됨'}catch(e){$('copy').textContent='복사 안 됨'} setTimeout(()=>$('copy').textContent='기록 복사',1500)};
+$('save').onclick=()=>{if(!log.length) return; const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([transcript()],{type:'text/plain'}));
+  a.download='lecture_'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.txt'; document.body.appendChild(a); a.click(); a.remove()};
+let confirmClear=false;
+$('clear').onclick=()=>{ if(!confirmClear){confirmClear=true; $('clear').textContent='정말 지울까요?'; setTimeout(()=>{confirmClear=false; $('clear').textContent='새 강의'},3000); return}
+  confirmClear=false; $('clear').textContent='새 강의'; log=[]; persist(); t0=running?Date.now():null; render()};
+</script>
+</body>
+</html>
