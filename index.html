@@ -77,6 +77,7 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:16px;pa
 .ko.err{color:var(--live);font-size:15px}
 .seg.live .en,.seg.live .ko{color:var(--interim);font-style:italic}
 .empty{color:var(--muted);text-align:center;margin-top:6vh;line-height:1.9}
+.ver{font:12px var(--mono);color:var(--muted);text-align:center;padding-top:24px;border-top:1px solid var(--line)}
 .retry{font-size:13px;padding:4px 10px;min-height:0;margin-left:8px}
 </style>
 </head>
@@ -143,6 +144,7 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:16px;pa
     <div class="sumbody" id="sumBody"></div>
   </section>
   <div class="stream" id="stream"></div>
+  <footer class="ver">강의 동시통역 v1.5 · 2026-10-31 · 받아쓰기 Groq Whisper / Safari · 번역·요약 Claude</footer>
 </div></main>
 
 <script>
@@ -168,8 +170,10 @@ function mode(){return $('mode').value}
 
 $('setBtn').onclick=()=>{$('settings').hidden=!$('settings').hidden; $('apikey').value=key(); $('gkey').value=gkey()};
 if(!key()||(engine()==='groq'&&!gkey())){$('settings').hidden=false; $('apikey').value=key(); $('gkey').value=gkey()}
-$('keySave').onclick=()=>{S.set('li_key',$('apikey').value.trim()); chip(key()?'키 저장됨':'키 없음',key()?'':'err')};
-$('gkeySave').onclick=()=>{S.set('li_gkey',$('gkey').value.trim()); chip(gkey()?'Groq 키 저장됨':'Groq 키 없음',gkey()?'':'err')};
+function keysReady(){return key()&&(engine()!=='groq'||gkey())}
+function afterKeySave(){if(keysReady()){$('settings').hidden=true; chip('키 저장 완료')}}
+$('keySave').onclick=()=>{const v=$('apikey').value.trim(); if(v) S.set('li_key',v); chip(key()?'키 저장됨':'키 없음',key()?'':'err'); afterKeySave()};
+$('gkeySave').onclick=()=>{const v=$('gkey').value.trim(); if(v) S.set('li_gkey',v); chip(gkey()?'Groq 키 저장됨':'Groq 키 없음',gkey()?'':'err'); afterKeySave()};
 $('homeUrl').onclick=()=>{const k=$('apikey').value.trim()||key(), g=$('gkey').value.trim()||gkey(); if(!k){chip('Claude 키를 먼저 넣으세요','err'); return}
   S.set('li_key',k); if(g) S.set('li_gkey',g); location.hash='key='+encodeURIComponent(k)+(g?'&gkey='+encodeURIComponent(g):'');
   $('homeHint').textContent='준비됐습니다. 지금 Safari 공유 버튼 → "홈 화면에 추가"를 누르세요. 기존 아이콘이 있으면 지우고 새로 추가하세요.'};
@@ -202,7 +206,9 @@ async function api(model,system,user,maxTokens){
   if(!res.ok){const j=await res.json().catch(()=>({})); const msg=j.error?.message||'';
     const err=new Error(res.status===401?'API 키가 맞지 않습니다. 설정에서 다시 입력하세요.':res.status===429?'요청이 많아 잠시 막혔습니다. 잠시 뒤 다시 시도하세요.':/credit/i.test(msg)?'API 크레딧이 부족합니다. 콘솔에서 충전하세요.':'오류: '+(msg||res.status));
     err.status=res.status; err.raw=msg; throw err}
-  const j=await res.json(); return j.content.map(c=>c.text||'').join('').trim();
+  const j=await res.json(); const text=j.content.map(c=>c.text||'').join('').trim();
+  if(j.stop_reason==='max_tokens'){const e=new Error('답이 길이 제한에 걸려 잘렸습니다'); e.partial=text; e.truncated=true; throw e}
+  return text;
 }
 
 const TRANS_SYS=()=>`You are a simultaneous interpreter at an international neurology conference. Translate the English speech segment into natural Korean, the way a Korean neurologist would say it.
@@ -217,9 +223,10 @@ async function pump(){
   const entry={time:stamp(),lang:'en',src:text,ko:''};
   const el=segEl(entry); const ko=el.querySelector('.ko'); ko.textContent='번역 중…'; ko.className='ko pending'; addTop(el);
   try{const prev=log.filter(x=>x.lang==='en').slice(-2).map(x=>x.src).join(' ');
-    entry.ko=await api(MODEL_FAST,TRANS_SYS(),(prev?`Previous sentences, context only (do not translate): ${prev}\n\n`:'')+`Translate:\n${text}`,700);
+    entry.ko=await api(MODEL_FAST,TRANS_SYS(),(prev?`Previous sentences, context only (do not translate): ${prev}\n\n`:'')+`Translate:\n${text}`,2000);
     ko.textContent=entry.ko; ko.className='ko'}
-  catch(e){entry.ko='(번역 실패)'; ko.className='ko err'; ko.textContent=e.message;
+  catch(e){if(e.partial){entry.ko=e.partial; ko.textContent=e.partial; ko.className='ko'; log.push(entry); persist(); busy=false; pump(); return}
+    entry.ko='(번역 실패)'; ko.className='ko err'; ko.textContent=e.message;
     const b=document.createElement('button'); b.className='retry'; b.textContent='다시 번역'; b.onclick=()=>{el.remove(); log=log.filter(x=>x!==entry); persist(); queue.unshift(text); pump()}; ko.appendChild(b)}
   log.push(entry); persist(); busy=false; pump();
 }
@@ -397,8 +404,9 @@ $('sumBtn').onclick=async()=>{
   const started=Date.now(); const timer=setInterval(()=>{$('sumBody').innerHTML='<p class="hint">정리하는 중… '+Math.floor((Date.now()-started)/1000)+'초 (1시간 강의는 1분 안팎 걸립니다)</p>'},500);
   $('sumBtn').disabled=true; chip('정리 중','busy');
   try{
-    try{sumText=await api(MODEL_SUM,system,user,8000)}
-    catch(e){if(e.status===404||(e.status===400&&/model/i.test(e.raw||''))) sumText=await api(MODEL_FAST,system,user,8000); else throw e}
+    try{sumText=await api(MODEL_SUM,system,user,16000)}
+    catch(e){if(e.partial) sumText=e.partial+'\n\n(정리본이 길어 끝부분이 잘렸습니다)';
+      else if(e.status===404||(e.status===400&&/model/i.test(e.raw||''))) sumText=await api(MODEL_FAST,system,user,16000); else throw e}
     clearInterval(timer); $('sumBody').innerHTML=md(sumText); S.set('li_sum',sumText); chip('정리 완료');
   }catch(e){clearInterval(timer); $('sumBody').innerHTML='<p class="ko err">'+esc(e.message)+'</p>'; chip('정리 실패','err')}
   finally{$('sumBtn').disabled=false}
@@ -422,14 +430,17 @@ async function runProgress(manual){
   $('progress').hidden=false; $('progNow').disabled=true; $('progNow').textContent='요약 중…';
   const topic=$('topic').value.trim();
   const system=`You keep a running summary of a live neurology conference lecture for a Korean neurologist who may have missed parts. The transcript comes from speech recognition and may contain misheard words; infer the intended meaning, keep drug names, trial names and numbers exact, and never invent content. Write in Korean; keep standard medical terms in English or add English in parentheses where Korean physicians normally do.`;
+  // 매번 전체 기록을 보냄 (요약을 요약하면 점점 내용이 사라지므로). 아주 길면 앞부분만 이전 요약으로 대신함
+  let lines=log.filter(x=>x.src).map(x=>`[${x.time}] ${x.src}`), cutHead=false;
+  while(lines.join('\n').length>120000){lines.shift(); cutHead=true}
   const user=(topic?`Lecture topic: ${topic}\n\n`:'')+
-    (prog.text?`Running summary so far:\n${prog.text}\n\n`:'')+
-    `New transcript since the last summary:\n`+fresh.map(x=>`[${x.time}] ${x.src}`).join('\n')+
-    `\n\nUpdate the running summary so it covers the WHOLE lecture so far. Output exactly:\n## 지금까지 흐름\n(5-8 bullets, "- ", in the order topics were covered; merge, don't just append)\n## 방금 다룬 내용\n(1-2 bullets about the newest part)`;
+    (cutHead&&prog.text?`Summary of the earliest part (transcript no longer included):\n${prog.text}\n\n`:'')+
+    `Transcript so far:\n`+lines.join('\n')+
+    `\n\nSummarize the WHOLE lecture so far. Output exactly:\n## 지금까지 흐름\n(5-8 bullets, "- ", in the order topics were covered; each bullet one or two complete sentences with the key point, data or claim)\n## 방금 다룬 내용\n(1-2 bullets about roughly the last few minutes)`;
   try{
-    prog={text:await api(MODEL_FAST,system,user,1200),upto,at:log[upto-1]?.time||''};
+    prog={text:await api(MODEL_FAST,system,user,4000),upto,at:log[upto-1]?.time||''};
     S.set('li_prog',JSON.stringify(prog)); showProg();
-  }catch(e){ if(manual){$('progress').hidden=false; $('progBody').innerHTML='<p class="ko err">'+esc(e.message)+'</p>'} }
+  }catch(e){ if(manual&&!prog.text){$('progress').hidden=false; $('progBody').innerHTML='<p class="ko err">'+esc(e.message)+'</p>'} else if(manual) chip('요약 실패 — 이전 요약 유지','err') }
   finally{ progBusy=false; $('progNow').disabled=false; $('progNow').textContent='지금 요약' }
 }
 $('progNow').onclick=()=>runProgress(true);
