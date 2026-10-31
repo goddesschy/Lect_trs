@@ -246,61 +246,73 @@ function tick(force){
 }
 setInterval(()=>{if(running&&engine()==='safari') tick(false)},400);
 
-// Groq Whisper: 녹음을 말이 멈추는 지점(6–15초)에서 끊어 보내고, 결과를 순서대로 붙임
-let mstream=null, actx=null, analyser=null, mr=null, chunkStart=0, silentSince=0, levelSum=0, levelN=0, recLoop=null, sendChain=Promise.resolve(), lastTail='', noise=0.01;
+// Groq Whisper: 녹음을 6–15초 단위로 끊어 보내고, 결과를 순서대로 붙임
+// 말 멈춤 감지는 소리 레벨을 읽을 수 있을 때만 쓰고, 못 읽으면 10초마다 끊음 (레벨 값으로 녹음을 버리거나 재연결하지 않음)
+let mstream=null, actx=null, analyser=null, abuf=null, mr=null, chunkStart=0, silentSince=0, recLoop=null, sendChain=Promise.resolve(), lastTail='', noise=0.01, levelOK=false, restarting=false;
 const MIME=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
 const HALLU=/^(감사합니다|시청해 ?주셔서 감사합니다|구독(과|,)? ?좋아요|MBC 뉴스|thank you|thanks for watching|you)[.!\s]*$/i;
 function newChunk(){
-  const parts=[]; const r=new MediaRecorder(mstream,MIME?{mimeType:MIME}:undefined);
+  if(!mstream) return;
+  const parts=[]; let r;
+  try{r=new MediaRecorder(mstream,MIME?{mimeType:MIME}:undefined)}catch(e){chip('녹음 시작 실패 — 정지 후 다시 시작','err'); return}
   r.ondataavailable=e=>{if(e.data&&e.data.size) parts.push(e.data)};
-  r.onstop=()=>{const blob=new Blob(parts,{type:r.mimeType||MIME||'audio/mp4'}); if(r._quiet||blob.size<2000) return;
+  r.onstop=()=>{const blob=new Blob(parts,{type:r.mimeType||MIME||'audio/mp4'}); if(blob.size<3000) return;
     sendChain=sendChain.then(()=>transcribe(blob)).then(t=>{if(t){lastTail=t; addSegment(t)}}).catch(e=>{chip(e.message,'err')})};
-  r.start(); mr=r; chunkStart=Date.now(); silentSince=0; levelSum=0; levelN=0;
+  r.start(); mr=r; chunkStart=Date.now(); silentSince=0;
 }
-function cutChunk(){const r=mr; if(!r||r.state==='inactive') return; const avg=levelN?levelSum/levelN:0; r._quiet=avg<Math.max(0.003,noise*1.4); try{r.stop()}catch(e){} if(running) newChunk()}
+function cutChunk(){const r=mr; if(r&&r.state!=='inactive'){try{r.stop()}catch(e){}} if(running) newChunk()}
 async function transcribe(blob){
   const fd=new FormData();
   fd.append('file',blob,'chunk.'+(/mp4/.test(blob.type)?'m4a':'webm'));
   fd.append('model','whisper-large-v3'); fd.append('language',mode()==='ko'?'ko':'en');
   fd.append('response_format','json'); fd.append('temperature','0');
-  const p=(($('topic').value.trim()?$('topic').value.trim()+'. ':'')+lastTail).slice(-400); if(p.trim()) fd.append('prompt',p);
+  const topic=$('topic').value.trim(); const topicOK=/[0-9A-Za-z가-힣]{2,}/.test(topic);
+  const p=((topicOK?topic+'. ':'')+lastTail).slice(-400); if(p.trim()) fd.append('prompt',p);
   const res=await fetch('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+gkey()},body:fd});
   if(!res.ok){const j=await res.json().catch(()=>({})); throw new Error(res.status===401?'Groq 키가 맞지 않습니다':res.status===429?'Groq 무료 한도 초과, 잠시 뒤 재시도':'Groq 오류: '+(j.error?.message||res.status))}
   const j=await res.json(); const t=(j.text||'').trim();
-  if(running) chip('듣는 중','on');
-  if(!/[0-9A-Za-z가-힣]/.test(t)) return '';   // "." 같은 빈 결과는 버림
+  if(running&&!restarting) chip('듣는 중','on');
+  if(!/[0-9A-Za-z가-힣]/.test(t)) return '';                 // "." 같은 빈 결과
+  if((t.match(/[ㄱ-ㅎㅏ-ㅣ]/g)||[]).length>t.length*0.3) return ''; // 자모만 나열된 깨진 결과
   return HALLU.test(t)?'':t;
 }
-// 마이크가 끊기거나 무음만 들어오면 녹음 장치를 다시 연결
-let deadSince=0, restarting=false;
+async function openMic(){
+  mstream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true}});
+  mstream.getAudioTracks().forEach(t=>{t.onended=()=>restartMic()});
+  levelOK=false; analyser=null;
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state!=='running') await actx.resume();
+    const src=actx.createMediaStreamSource(mstream); analyser=actx.createAnalyser(); analyser.fftSize=1024; src.connect(analyser);
+    abuf=new Float32Array(analyser.fftSize);
+  }catch(e){analyser=null}
+}
 async function restartMic(){
   if(restarting||!running) return; restarting=true; chip('마이크 다시 연결 중','busy');
-  clearInterval(recLoop); recLoop=null; const r=mr; mr=null; try{if(r&&r.state!=='inactive'){r._quiet=true; r.stop()}}catch(e){}
-  try{mstream?.getTracks().forEach(t=>t.stop())}catch(e){} try{actx?.close()}catch(e){}
-  try{await startGroq(); chip('듣는 중','on')}catch(e){chip('마이크 연결 실패 — 정지 후 다시 시작','err')}
-  deadSince=0; restarting=false;
+  cutChunk(); const old=mstream; mstream=null;
+  try{old?.getTracks().forEach(t=>t.stop())}catch(e){}
+  try{await openMic(); newChunk(); chip('듣는 중','on')}catch(e){chip('마이크 연결 실패 — 정지 후 다시 시작','err')}
+  restarting=false;
 }
 async function startGroq(){
-  mstream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:true,autoGainControl:true}});
-  actx=new (window.AudioContext||window.webkitAudioContext)(); try{await actx.resume()}catch(e){}
-  const src=actx.createMediaStreamSource(mstream); analyser=actx.createAnalyser(); analyser.fftSize=1024; src.connect(analyser);
-  const buf=new Float32Array(analyser.fftSize); noise=0.01; deadSince=0;
-  mstream.getAudioTracks().forEach(t=>{t.onended=()=>restartMic(); t.onmute=()=>{deadSince=deadSince||Date.now()}});
-  newChunk();
+  await openMic(); noise=0.01; newChunk();
   recLoop=setInterval(()=>{
-    analyser.getFloatTimeDomainData(buf); let s=0; for(let i=0;i<buf.length;i++) s+=buf[i]*buf[i]; const rms=Math.sqrt(s/buf.length);
-    if(actx&&actx.state!=='running'){try{actx.resume()}catch(e){}}
-    if(rms<0.0002){deadSince=deadSince||Date.now(); if(Date.now()-deadSince>4000){restartMic(); return}} else deadSince=0;  // 완전 무음 4초 = 마이크 끊김
-    noise=Math.max(0.002,rms<noise?noise*0.9+rms*0.1:noise*1.003);  // 배경 소음 수준을 천천히 추적
-    levelSum+=rms; levelN++;
+    if(!mr) return;
     const now=Date.now(), sec=(now-chunkStart)/1000;
-    if(rms<Math.max(0.004,noise*1.8)){if(!silentSince) silentSince=now} else silentSince=0;
+    let quiet=false;
+    if(analyser){
+      analyser.getFloatTimeDomainData(abuf); let s=0; for(let i=0;i<abuf.length;i++) s+=abuf[i]*abuf[i]; const rms=Math.sqrt(s/abuf.length);
+      if(rms>0.0005) levelOK=true;                       // 레벨을 실제로 읽을 수 있는지
+      if(levelOK){noise=Math.max(0.002,rms<noise?noise*0.9+rms*0.1:noise*1.003); quiet=rms<Math.max(0.004,noise*1.8)}
+    }
+    if(quiet){if(!silentSince) silentSince=now} else silentSince=0;
     showLive('● 녹음 중 '+Math.floor(sec)+'초');
-    if(sec>=15||(sec>=6&&silentSince&&now-silentSince>=400)) cutChunk();
+    const limit=levelOK?15:10;
+    if(sec>=limit||(levelOK&&sec>=6&&silentSince&&now-silentSince>=400)) cutChunk();
   },100);
 }
 function stopGroq(){clearInterval(recLoop); recLoop=null; const r=mr; mr=null; try{if(r&&r.state!=='inactive') r.stop()}catch(e){}
-  try{mstream?.getTracks().forEach(t=>t.stop())}catch(e){} mstream=null; try{actx?.close()}catch(e){} actx=null; showLive('')}
+  try{mstream?.getTracks().forEach(t=>t.stop())}catch(e){} mstream=null; try{actx?.close()}catch(e){} actx=null; analyser=null; showLive('')}
 
 function newRec(){
   const r=new SR(); r.lang=mode()==='ko'?'ko-KR':'en-US'; r.continuous=true; r.interimResults=true;
